@@ -10,14 +10,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+console.log("API key exists:", !!process.env.OPENAI_API_KEY);
+
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-
-app.get("/", (req, res) => {
-  res.json({
-    status: "Vamshi Backend is Running"
-  });
 });
 
 app.post("/chat", async (req, res) => {
