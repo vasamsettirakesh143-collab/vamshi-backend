@@ -1,4 +1,5 @@
-import express from "express";
+
+    import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
@@ -17,9 +18,7 @@ const client = new OpenAI({
 });
 
 app.post("/chat", async (req, res) => {
-
   try {
-
     const message = req.body.message;
 
     const response = await client.responses.create({
@@ -32,19 +31,20 @@ app.post("/chat", async (req, res) => {
     });
 
   } catch (error) {
-
     console.error(error);
 
     res.status(500).json({
       reply: "Sorry, my brain is temporarily unavailable."
     });
-
   }
+});
 
+app.get("/", (req, res) => {
+  res.send("Vamshi backend is running!");
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("Vamshi Backend Running on Port " + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
