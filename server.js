@@ -11,55 +11,86 @@ app.use(cors());
 app.use(express.json());
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+    apiKey: process.env.GROQ_API_KEY,
 });
 
+// Temporary chat memory
+
+let chatHistory = [
+    {
+        role: "system",
+        content: "You are Vamshi, a helpful AI assistant created by Rakesh."
+    }
+];
+
 app.get("/", (req, res) => {
-  res.send("Vamshi backend is running");
+    res.send("Vamshi backend is running");
 });
 
 app.post("/chat", async (req, res) => {
 
-  try {
+    try {
 
-    const message = req.body.message;
+        const message = req.body.message;
 
-    const response = await groq.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are Vamshi, a helpful personal AI assistant created by Rakesh."
-        },
-        {
-          role: "user",
-          content: message
+        chatHistory.push({
+            role: "user",
+            content: message
+        });
+
+        // Keep only the last 20 messages
+
+        if (chatHistory.length > 21) {
+
+            chatHistory = [
+                chatHistory[0],
+                ...chatHistory.slice(-20)
+            ];
+
         }
-      ],
 
-      model: "llama-3.1-8b-instant"
+        const response = await groq.chat.completions.create({
 
-    });
+            model: "llama-3.1-8b-instant",
 
-    const reply = response.choices[0].message.content;
+            messages: chatHistory
 
-    res.json({
-      reply: reply
-    });
+        });
 
-  } catch (error) {
+        const reply = response.choices[0].message.content;
 
-    console.error(error);
+        chatHistory.push({
 
-    res.status(500).json({
-      reply: "Sorry, my brain is temporarily unavailable."
-    });
+            role: "assistant",
 
-  }
+            content: reply
+
+        });
+
+        res.json({
+
+            reply: reply
+
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+
+            reply: "Sorry, my brain is temporarily unavailable."
+
+        });
+
+    }
 
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+
+    console.log(`Server running on port ${PORT}`);
+
 });
