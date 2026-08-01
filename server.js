@@ -15,7 +15,7 @@ const client = new OpenAI({
 });
 
 app.get("/", (req, res) => {
-    res.send("Vamshi backend is running!");
+    res.send("Vamshi backend is running");
 });
 
 app.post("/chat", async (req, res) => {
@@ -29,36 +29,16 @@ app.post("/chat", async (req, res) => {
             input: message
         });
 
-        console.log(JSON.stringify(response, null, 2));
-
-        let reply = "Sorry, I couldn't understand.";
-
-        if (response.output_text) {
-
-            reply = response.output_text;
-
-        } else if (
-            response.output &&
-            response.output[0] &&
-            response.output[0].content &&
-            response.output[0].content[0] &&
-            response.output[0].content[0].text
-        ) {
-
-            reply = response.output[0].content[0].text;
-
-        }
-
         res.json({
-            reply: String(reply)
+            reply: response.output_text
         });
 
     } catch (error) {
 
         console.error(error);
 
-        res.status(500).json({
-            reply: "Sorry, my brain is temporarily unavailable."
+        res.json({
+            reply: error.message
         });
 
     }
