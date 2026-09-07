@@ -21,6 +21,46 @@ let chatHistory = [
     }
 ];
 
+/*
+ * NEW:
+ * System prompt for ACTION detection. The AI must
+ * decide if the user wants a device action performed.
+ * If yes, it replies ONLY with JSON. If no, it replies
+ * with "NO_ACTION" followed by a normal answer.
+ */
+const ACTION_SYSTEM_PROMPT = `You are the action-detection brain of an Android voice assistant called Vamshi.
+
+The user's spoken command will be given to you. Decide whether the user wants the phone to PERFORM an action, or whether they are just asking a question / chatting.
+
+You may return ONE of these actions:
+- whatsapp: send or open a WhatsApp message. Fields: contact (name as spoken), message (the text to send, may be empty if they only want the chat opened).
+- call: phone call. Fields: contact (name as spoken).
+- open_app: open an installed app. Fields: app (app name as spoken).
+- navigate: start Google Maps navigation. Fields: destination.
+
+Rules:
+1. If the user wants an action, reply ONLY with valid JSON, nothing else, in this exact format:
+{"action":"whatsapp","contact":"amma","message":"hi"}
+{"action":"call","contact":"rakesh"}
+{"action":"open_app","app":"youtube"}
+{"action":"navigate","destination":"Tirupati"}
+
+2. For whatsapp, extract the message text from phrases like "saying ...", "that ...", or whatever follows the contact name. If no message text is given, use "".
+3. If the user is NOT requesting an action (questions, greetings, general chat), reply with exactly:
+NO_ACTION
+4. Never invent actions. If unsure, reply NO_ACTION.
+5. Ignore requests for actions you do not support (alarms, texts via SMS, emails) and reply NO_ACTION.
+
+Examples:
+"text mom I'll be late" -> {"action":"whatsapp","contact":"mom","message":"I'll be late"}
+"ping rakesh on whatsapp" -> {"action":"whatsapp","contact":"rakesh","message":""}
+"open whatsapp chat with amma" -> {"action":"whatsapp","contact":"amma","message":""}
+"call amma" -> {"action":"call","contact":"amma"}
+"open youtube" -> {"action":"open_app","app":"youtube"}
+"navigate to hyderabad" -> {"action":"navigate","destination":"hyderabad"}
+"what is the capital of France" -> NO_ACTION
+"tell me a joke" -> NO_ACTION`;
+
 app.get("/", (req, res) => {
     res.send("Vamshi backend is running");
 });
@@ -69,6 +109,101 @@ app.post("/chat", async (req, res) => {
 
         res.status(500).json({
             reply: "Sorry, my brain is temporarily unavailable."
+        });
+    }
+});
+
+/*
+ * NEW:
+ * Action-detection route. The app sends the spoken
+ * command here first. If the AI detects an action,
+ * we return {"action": {...}}. Otherwise we return
+ * {"action": null} and the app falls back to /chat.
+ */
+app.post("/action", async (req, res) => {
+    try {
+        const message = String(req.body.message || "").trim();
+
+        if (!message) {
+            return res.status(400).json({
+                action: null
+            });
+        }
+
+        const response = await groq.chat.completions.create({
+            model: "openai/gpt-oss-20b",
+            messages: [
+                {
+                    role: "system",
+                    content: ACTION_SYSTEM_PROMPT
+                },
+                {
+                    role: "user",
+                    content: message
+                }
+            ],
+            temperature: 0
+        });
+
+        const raw =
+            response.choices?.[0]?.message?.content?.trim() || "";
+
+        console.log("Action brain said:", raw);
+
+        if (!raw.startsWith("{")) {
+
+            // Not an action — normal chat.
+            return res.json({
+                action: null
+            });
+        }
+
+        // Strip markdown fences if the model adds them.
+        const cleaned = raw
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/, "")
+            .trim();
+
+        const parsed = JSON.parse(cleaned);
+
+        const allowedActions = [
+            "whatsapp",
+            "call",
+            "open_app",
+            "navigate"
+        ];
+
+        if (!allowedActions.includes(parsed.action)) {
+            return res.json({
+                action: null
+            });
+        }
+
+        res.json({
+            action: {
+                type: parsed.action,
+                contact: typeof parsed.contact === "string"
+                        ? parsed.contact
+                        : "",
+                message: typeof parsed.message === "string"
+                        ? parsed.message
+                        : "",
+                app: typeof parsed.app === "string"
+                        ? parsed.app
+                        : "",
+                destination: typeof parsed.destination === "string"
+                        ? parsed.destination
+                        : ""
+            }
+        });
+
+    } catch (error) {
+
+        console.error("Action error:", error);
+
+        // On any failure, fall back to normal chat.
+        res.json({
+            action: null
         });
     }
 });
