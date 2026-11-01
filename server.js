@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json({ limit: "15mb" }));
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY
 });
 
 let chatHistory = [
@@ -184,6 +184,53 @@ app.post("/action", async (req, res) => {
   }
 });
 
+async function askVision(message, dataUrl) {
+  const models = [
+    "qwen/qwen3.8-27b",
+    "meta-llama/llama-4-scout-17b-16e-instruct"
+  ];
+
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      const response = await groq.chat.completions.create({
+        model: model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: message
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: dataUrl
+                }
+              }
+            ]
+          }
+        ],
+        temperature: 0.3,
+        max_completion_tokens: 500
+      });
+
+      const reply = response.choices?.[0]?.message?.content;
+
+      if (reply) {
+        return reply;
+      }
+    } catch (error) {
+      lastError = error;
+      console.error("Vision model failed: " + model, error);
+    }
+  }
+
+  throw lastError || new Error("No vision model available");
+}
+
 app.post("/vision", async (req, res) => {
   try {
     const message = String(
@@ -208,7 +255,13 @@ app.post("/vision", async (req, res) => {
       ? image.mimeType
       : "image/jpeg";
 
-    const cleanBase64 = image.data.re^;]+;base64,/, "");
+    let cleanBase64 = image.data;
+    const marker = "base64,";
+    const markerIndex = cleanBase64.indexOf(marker);
+
+    if (markerIndex !== -1) {
+      cleanBase64 = cleanBase64.substring(markerIndex + marker.length);
+    }
 
     if (cleanBase64.length > 12 * 1024 * 1024) {
       return res.status(413).json({
@@ -216,31 +269,10 @@ app.post("/vision", async (req, res) => {
       });
     }
 
-    const response = await groq.chat.completions.create({
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: message
-            },
-            {
-              type: "image_url",
-              image_url: {
-             mimeType};base64,${cleanBase64}`
-              }
-            }
-          ]
-        }
-      ],
-      temperature: 0.3,
-      max_completion_tokens: 500
-    });
+    const scheme = "data";
+    const dataUrl = scheme + ":" + mimeType + ";" + marker + cleanBase64;
 
-    const reply = response.choices?.[0]?.message?.content ||
-      "I could not understand that image.";
+    const reply = await askVision(message, dataUrl);
 
     res.json({
       reply: reply
@@ -257,5 +289,5 @@ app.post("/vision", async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port " + PORT);
 });
